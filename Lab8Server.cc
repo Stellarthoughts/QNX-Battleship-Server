@@ -16,12 +16,15 @@ int chid;
 
 char** split(char* string, int* finalSize, int splitMaxSize);
 void freeChar2D(char** arr, int size);
-void executeCommand(char** args, int argc, char* rmessage);
-void listFile(FILE* f, char* string);
-void listDirectory(DIR* d, char* string);
+int executeCommandPrepare(char** args, int argc, char* rmessage);
+int executeCommandBattle(char** args, int argc, char* rmessage);
 
 char message[512];
-int rcvid;
+
+int rcvid1;
+int rcvid2;
+
+int playersConnected = 0;
 
 int main()
 {
@@ -45,35 +48,59 @@ int main()
 	fclose(f);
 	free(ndString);
 
-	// Receiver
 	while(1)
 	{
-		// recieve
-		rcvid = MsgReceive(chid,message,sizeof(message),NULL);
-		printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
-
-		// parse and execute commands
-		if(strlen(message) > 0)
+		// Preparing
+		while(1)
 		{
-			// parse reply
-			int n;
-			char **spl = split(message,&n,10);
-
-			// form command
-			executeCommand(spl,n,message);
-
-			// free memory
+			int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
+			printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
+			int n; char **spl = split(message,&n,10);
+			int done = executeCommandPrepare(spl,n,message);
 			freeChar2D(spl, n);
+			MsgReply(rcvid,EOK,message,sizeof(message));
+
+			if(done == 1) break;
 		}
-		else
+		// Battle
+		while(1)
 		{
-			// default answer
-			strcpy(message,"You have not entered anything");
+			// recieve
+			int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
+			printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
+
+			// parse reply
+			int n; char **spl = split(message,&n,10);
+			int done = executeCommandBattle(spl,n,message);
+			freeChar2D(spl, n);
+
+			// reply
+			MsgReply(rcvid,EOK,message,sizeof(message));
+
+			if(done == 1) break;
 		}
 
-		// reply
-		MsgReply(rcvid,EOK,message,sizeof(message));
+		// NULLfy everything
+		playersConnected = 0;
 	}
+
+	return 0;
+}
+
+
+int executeCommandPrepare(char** args, int argc, char* rmessage)
+{
+	strcpy(rmessage,"Unknown command");
+	if(strcmp(args[0],"Ready") == 0)
+	{
+		return 1;
+	}
+	return 0;
+}
+
+int executeCommandBattle(char** args, int argc, char* rmessage)
+{
+	strcpy(rmessage,"Unknown command");
 	return 0;
 }
 
@@ -93,11 +120,6 @@ char** split(char* string, int* finalSize, int splitMaxSize)
 	free(single);
 	*finalSize = n;
 	return spl;
-}
-
-void executeCommand(char** args, int argc, char* rmessage)
-{
-		strcpy(rmessage,"Unknown command");
 }
 
 void freeChar2D(char** arr, int size)
