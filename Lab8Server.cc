@@ -16,15 +16,24 @@ int chid;
 
 char** split(char* string, int* finalSize, int splitMaxSize);
 void freeChar2D(char** arr, int size);
-int executeCommandPrepare(char** args, int argc, char* rmessage);
-int executeCommandBattle(char** args, int argc, char* rmessage);
+int executeCommandPrepare(char** args, int argc, char* rmessage, int rcvid);
+int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid);
 
 char message[512];
 
 int rcvid1;
 int rcvid2;
-
 int playersConnected = 0;
+int finished = 0;
+
+int** player1Ships;
+int** player2Ships;
+
+int* p1Shot;
+int* p2Shot;
+
+int p1Hit;
+int p2Hit;
 
 int main()
 {
@@ -48,6 +57,12 @@ int main()
 	fclose(f);
 	free(ndString);
 
+	player1Ships = (int**) malloc(sizeof(int*) * 5);
+	player2Ships = (int**) malloc(sizeof(int*) * 5);
+
+	p1Shot = (int*) malloc(sizeof(int*) * 2);
+	p2Shot = (int*) malloc(sizeof(int*) * 2);
+
 	while(1)
 	{
 		// Preparing
@@ -56,28 +71,46 @@ int main()
 			int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
 			printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
 			int n; char **spl = split(message,&n,10);
-			int done = executeCommandPrepare(spl,n,message);
+			int done = executeCommandPrepare(spl,n,message, rcvid);
 			freeChar2D(spl, n);
-			MsgReply(rcvid,EOK,message,sizeof(message));
-
 			if(done == 1) break;
 		}
+		strcpy(message,"Player 1");
+		MsgReply(rcvid1,EOK,message,sizeof(message));
+		strcpy(message,"Player 2");
+		MsgReply(rcvid2,EOK,message,sizeof(message));
+
 		// Battle
 		while(1)
 		{
-			// recieve
-			int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
-			printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
+			int i = 0;
+			while(1 < 2)
+			{
+				// recieve
+				int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
+				printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
+				if(rcvid != rcvid1 && rcvid != rcvid2)
+				{
+					strcpy(message,"No");
+					MsgReply(rcvid,EOK,message,sizeof(message));
+				}
+				else
+				{
+					int n; char **spl = split(message,&n,10);
+					int done = executeCommandBattle(spl,n,message, rcvid);
+					freeChar2D(spl, n);
+					if(done == 1) break;
+				}
+				i++;
+			}
+			sprintf(message,"%d %d%d %d %d%d %d",p1Hit,p1Shot[0],p1Shot[1],p2Hit,p2Shot[0],p2Shot[1],finished);
+			printf("%s",message);
+			MsgReply(rcvid1,EOK,message,sizeof(message));
+			sprintf(message,"%d %d%d %d %d%d %d",p2Hit,p2Shot[0],p2Shot[1],p1Hit,p1Shot[0],p1Shot[1],finished);
+			printf("%s",message);
+			MsgReply(rcvid2,EOK,message,sizeof(message));
 
-			// parse reply
-			int n; char **spl = split(message,&n,10);
-			int done = executeCommandBattle(spl,n,message);
-			freeChar2D(spl, n);
-
-			// reply
-			MsgReply(rcvid,EOK,message,sizeof(message));
-
-			if(done == 1) break;
+			if(finished == 1 || finished == 2) break;
 		}
 
 		// NULLfy everything
@@ -88,19 +121,80 @@ int main()
 }
 
 
-int executeCommandPrepare(char** args, int argc, char* rmessage)
+int executeCommandPrepare(char** args, int argc, char* rmessage, int rcvid)
 {
-	strcpy(rmessage,"Unknown command");
 	if(strcmp(args[0],"Ready") == 0)
 	{
-		return 1;
+		int i;
+		if(playersConnected == 0)
+		{
+			rcvid1 = rcvid;
+			playersConnected++;
+			for(i = 0; i < 5; i++)
+			{
+				int* cell = (int*) malloc(sizeof(int) * 2);
+				cell[0] = args[i+1][0] - '0';
+				cell[1] = args[i+1][1] - '0';
+				player1Ships[i] = cell;
+			}
+			return 0;
+		}
+		else if(playersConnected == 1)
+		{
+			rcvid2 = rcvid;
+			playersConnected++;
+			for(i = 0; i < 5; i++)
+			{
+				int* cell = (int*) malloc(sizeof(int) * 2);
+				cell[0] = args[i+1][0] - '0';
+				cell[1] = args[i+1][1] - '0';
+				player2Ships[i] = cell;
+			}
+			return 1;
+		}
 	}
 	return 0;
 }
 
-int executeCommandBattle(char** args, int argc, char* rmessage)
+int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid)
 {
-	strcpy(rmessage,"Unknown command");
+	int* cell = (int*) malloc(sizeof(int) * 2);
+	cell[0] = args[0][0] - '0';
+	cell[1] = args[0][1] - '0';
+
+	int i;
+
+	if(rcvid == rcvid1)
+	{
+		p1Shot = cell;
+		for(i = 0; i < 5; i++)
+		{
+			if(player2Ships != NULL)
+			{
+				if(player2Ships[i][0] == p1Shot[0] && player2Ships[i][1] == p1Shot[1])
+				{
+					p1Hit = 1;
+					player2Ships[i] = NULL;
+				}
+			}
+		}
+	}
+	else if(rcvid == rcvid2)
+	{
+		p2Shot = cell;
+		for(i = 0; i < 5; i++)
+		{
+			if(player1Ships != NULL)
+			{
+				if(player1Ships[i][0] == p2Shot[0] && player1Ships[i][1] == p2Shot[1])
+				{
+					p2Hit = 1;
+					player1Ships[i] = NULL;
+				}
+			}
+		}
+	}
+
 	return 0;
 }
 
