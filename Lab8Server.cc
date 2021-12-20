@@ -60,8 +60,8 @@ int main()
 	player1Ships = (int**) malloc(sizeof(int*) * 5);
 	player2Ships = (int**) malloc(sizeof(int*) * 5);
 
-	p1Shot = (int*) malloc(sizeof(int*) * 2);
-	p2Shot = (int*) malloc(sizeof(int*) * 2);
+	p1Shot = NULL;
+	p2Shot = NULL;
 
 	while(1)
 	{
@@ -84,7 +84,7 @@ int main()
 		while(1)
 		{
 			int i = 0;
-			while(1 < 2)
+			while(i < 2)
 			{
 				// recieve
 				int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
@@ -104,17 +104,23 @@ int main()
 				i++;
 			}
 			sprintf(message,"%d %d%d %d %d%d %d",p1Hit,p1Shot[0],p1Shot[1],p2Hit,p2Shot[0],p2Shot[1],finished);
-			printf("%s",message);
+			printf("%s\n",message);
 			MsgReply(rcvid1,EOK,message,sizeof(message));
 			sprintf(message,"%d %d%d %d %d%d %d",p2Hit,p2Shot[0],p2Shot[1],p1Hit,p1Shot[0],p1Shot[1],finished);
-			printf("%s",message);
+			printf("%s\n",message);
 			MsgReply(rcvid2,EOK,message,sizeof(message));
+
+			p1Hit = 0; p1Shot = NULL;
+			p2Hit = 0; p2Shot = NULL;
 
 			if(finished == 1 || finished == 2) break;
 		}
 
 		// NULLfy everything
 		playersConnected = 0;
+		player1Ships = (int**) malloc(sizeof(int*) * 5);
+		player2Ships = (int**) malloc(sizeof(int*) * 5);
+		finished = 0;
 	}
 
 	return 0;
@@ -166,10 +172,11 @@ int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid)
 
 	if(rcvid == rcvid1)
 	{
+		int nill = 5;
 		p1Shot = cell;
 		for(i = 0; i < 5; i++)
 		{
-			if(player2Ships != NULL)
+			if(player2Ships[i] != NULL)
 			{
 				if(player2Ships[i][0] == p1Shot[0] && player2Ships[i][1] == p1Shot[1])
 				{
@@ -177,20 +184,31 @@ int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid)
 					player2Ships[i] = NULL;
 				}
 			}
+			if(player2Ships[i] == NULL)
+			{
+				nill--;
+				if(nill == 0) finished = 1;
+			}
 		}
 	}
 	else if(rcvid == rcvid2)
 	{
+		int nill = 5;
 		p2Shot = cell;
 		for(i = 0; i < 5; i++)
 		{
-			if(player1Ships != NULL)
+			if(player1Ships[i] != NULL)
 			{
 				if(player1Ships[i][0] == p2Shot[0] && player1Ships[i][1] == p2Shot[1])
 				{
 					p2Hit = 1;
 					player1Ships[i] = NULL;
 				}
+			}
+			if(player1Ships[i] == NULL)
+			{
+				nill--;
+				if(nill == 0) finished = 2;
 			}
 		}
 	}
