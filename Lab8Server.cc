@@ -32,8 +32,12 @@ int** player2Ships;
 int* p1Shot;
 int* p2Shot;
 
-int p1Hit;
-int p2Hit;
+int p1Hit = 0;
+int p2Hit = 0;
+
+int turn = 0;
+int serverHasInfoFor1 = 0;
+int serverHasInfoFor2 = 0;
 
 int main()
 {
@@ -60,8 +64,8 @@ int main()
 	player1Ships = (int**) malloc(sizeof(int*) * 5);
 	player2Ships = (int**) malloc(sizeof(int*) * 5);
 
-	p1Shot = NULL;
-	p2Shot = NULL;
+	p1Shot = (int*) malloc(sizeof(int) * 2);
+	p2Shot = (int*) malloc(sizeof(int) * 2);
 
 	while(1)
 	{
@@ -80,40 +84,23 @@ int main()
 		strcpy(message,"Player 2");
 		MsgReply(rcvid2,EOK,message,sizeof(message));
 
+		turn = 1;
 		// Battle
 		while(1)
 		{
-			int i = 0;
-			while(i < 2)
+			int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
+			if(strcmp(message,"Info") != 0)
 			{
-				// recieve
-				int rcvid = MsgReceive(chid,message,sizeof(message),NULL);
 				printf("Message received, rcvid %X: \"%s\"\n",rcvid,message);
-				if(rcvid != rcvid1 && rcvid != rcvid2)
-				{
-					strcpy(message,"No");
-					MsgReply(rcvid,EOK,message,sizeof(message));
-				}
-				else
-				{
-					int n; char **spl = split(message,&n,10);
-					int done = executeCommandBattle(spl,n,message, rcvid);
-					freeChar2D(spl, n);
-					if(done == 1) break;
-				}
-				i++;
 			}
-			sprintf(message,"%d %d%d %d %d%d %d",p1Hit,p1Shot[0],p1Shot[1],p2Hit,p2Shot[0],p2Shot[1],finished);
-			printf("%s\n",message);
-			MsgReply(rcvid1,EOK,message,sizeof(message));
-			sprintf(message,"%d %d%d %d %d%d %d",p2Hit,p2Shot[0],p2Shot[1],p1Hit,p1Shot[0],p1Shot[1],finished);
-			printf("%s\n",message);
-			MsgReply(rcvid2,EOK,message,sizeof(message));
 
-			p1Hit = 0; p1Shot = NULL;
-			p2Hit = 0; p2Shot = NULL;
+			int n; char **spl = split(message,&n,10);
+			executeCommandBattle(spl,n,message, rcvid);
+			freeChar2D(spl, n);
 
-			if(finished == 1 || finished == 2) break;
+			MsgReply(rcvid,EOK,message,sizeof(message));
+
+			if((finished == 1 || finished == 2) && !serverHasInfoFor1 && !serverHasInfoFor2) break;
 		}
 
 		// NULLfy everything
@@ -121,11 +108,127 @@ int main()
 		player1Ships = (int**) malloc(sizeof(int*) * 5);
 		player2Ships = (int**) malloc(sizeof(int*) * 5);
 		finished = 0;
+		turn = 0;
 	}
 
 	return 0;
 }
 
+int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid)
+{
+	int* cell = (int*) malloc(sizeof(int) * 2);
+	cell[0] = args[0][0] - '0';
+	cell[1] = args[0][1] - '0';
+
+	int i;
+
+	if(rcvid != rcvid1 && rcvid != rcvid2)
+	{
+		strcpy(message,"No");
+		return 0;
+	}
+
+	if(strcmp(args[0],"Info") == 0)
+	{
+		if((rcvid == rcvid1) && serverHasInfoFor1)
+		{
+			serverHasInfoFor1 = 0;
+			sprintf(rmessage,"%d %d%d %d",p2Hit,p2Shot[0],p2Shot[1],finished);
+			return 0;
+		}
+		else if((rcvid == rcvid2) && serverHasInfoFor2)
+		{
+			serverHasInfoFor2 = 0;
+			sprintf(rmessage,"%d %d%d %d",p1Hit,p1Shot[0],p1Shot[1],finished);
+			return 0;
+		}
+		strcpy(rmessage,"NoInfo");
+		return 0;
+	}
+
+	else if(strcmp(args[0],"Surrender") == 0)
+	{
+		if(rcvid == rcvid1)
+		{
+			finished = 2;
+			strcpy(rmessage,"Roger");
+			serverHasInfoFor1 = 1;
+			serverHasInfoFor2 = 1;
+			return 0;
+		}
+		else if(rcvid == rcvid2)
+		{
+			finished = 1;
+			strcpy(rmessage,"Roger");
+			serverHasInfoFor1 = 1;
+			serverHasInfoFor2 = 1;
+			return 0;
+		}
+	}
+	else
+	{
+		if(rcvid == rcvid1 && turn != 1 || rcvid == rcvid2 && turn != 2)
+		{
+			strcpy(rmessage,"Turn");
+			return 0;
+		}
+
+		if(rcvid == rcvid1)
+		{
+			int nill = 5;
+			p1Hit = 0;
+			p1Shot = cell;
+			for(i = 0; i < 5; i++)
+			{
+				if(player2Ships[i] != NULL)
+				{
+					if(player2Ships[i][0] == p1Shot[0] && player2Ships[i][1] == p1Shot[1])
+					{
+						p1Hit = 1;
+						player2Ships[i] = NULL;
+					}
+				}
+				if(player2Ships[i] == NULL)
+				{
+					nill--;
+					if(nill == 0) finished = 1;
+				}
+			}
+			sprintf(rmessage,"%d %d%d %d",p1Hit,p1Shot[0],p1Shot[1],finished);
+			turn = 2;
+			serverHasInfoFor2 = 1;
+			return 0;
+		}
+		else if(rcvid == rcvid2)
+		{
+			int nill = 5;
+			p2Hit = 0;
+			p2Shot = cell;
+			for(i = 0; i < 5; i++)
+			{
+				if(player1Ships[i] != NULL)
+				{
+					if(player1Ships[i][0] == p2Shot[0] && player1Ships[i][1] == p2Shot[1])
+					{
+						p2Hit = 1;
+						player1Ships[i] = NULL;
+					}
+				}
+				if(player1Ships[i] == NULL)
+				{
+					nill--;
+					if(nill == 0) finished = 2;
+				}
+			}
+			sprintf(rmessage,"%d %d%d %d",p2Hit,p2Shot[0],p2Shot[1],finished);
+			turn = 1;
+			serverHasInfoFor1 = 1;
+			return 0;
+		}
+	}
+
+	return 0;
+}
 
 int executeCommandPrepare(char** args, int argc, char* rmessage, int rcvid)
 {
@@ -159,60 +262,6 @@ int executeCommandPrepare(char** args, int argc, char* rmessage, int rcvid)
 			return 1;
 		}
 	}
-	return 0;
-}
-
-int executeCommandBattle(char** args, int argc, char* rmessage, int rcvid)
-{
-	int* cell = (int*) malloc(sizeof(int) * 2);
-	cell[0] = args[0][0] - '0';
-	cell[1] = args[0][1] - '0';
-
-	int i;
-
-	if(rcvid == rcvid1)
-	{
-		int nill = 5;
-		p1Shot = cell;
-		for(i = 0; i < 5; i++)
-		{
-			if(player2Ships[i] != NULL)
-			{
-				if(player2Ships[i][0] == p1Shot[0] && player2Ships[i][1] == p1Shot[1])
-				{
-					p1Hit = 1;
-					player2Ships[i] = NULL;
-				}
-			}
-			if(player2Ships[i] == NULL)
-			{
-				nill--;
-				if(nill == 0) finished = 1;
-			}
-		}
-	}
-	else if(rcvid == rcvid2)
-	{
-		int nill = 5;
-		p2Shot = cell;
-		for(i = 0; i < 5; i++)
-		{
-			if(player1Ships[i] != NULL)
-			{
-				if(player1Ships[i][0] == p2Shot[0] && player1Ships[i][1] == p2Shot[1])
-				{
-					p2Hit = 1;
-					player1Ships[i] = NULL;
-				}
-			}
-			if(player1Ships[i] == NULL)
-			{
-				nill--;
-				if(nill == 0) finished = 2;
-			}
-		}
-	}
-
 	return 0;
 }
 
